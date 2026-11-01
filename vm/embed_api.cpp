@@ -76,6 +76,13 @@ static int embed_vm_init(const char* image_path) {
   p.init_from_args(1, argv);
   if (image_path && image_path[0])
     p.image_path = safe_strdup(image_path);
+  // The per-thread "current VM" key is created by init_mvm(), which only the
+  // executable's main() calls (main-unix.cpp / main-windows.cpp). An embedding
+  // host has no Factor main(), so without this new_factor_vm() registers the
+  // VM under an uncreated key: silently wrong before upstream checked the
+  // result, `fatal_error: pthread_setspecific() failed` since (fc7ff554bf).
+  // Runs once: g_embed_vm guards the whole function.
+  init_mvm();
   g_embed_vm = new_factor_vm();
   g_embed_vm->init_factor(&p);
 
