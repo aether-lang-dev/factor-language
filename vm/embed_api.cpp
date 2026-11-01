@@ -27,26 +27,6 @@
 
 namespace factor {
 
-// Build an argv of the form {"factor", "-e=<src>"} that the existing
-// command-line parser + eval chain understands. Caller frees via
-// embed_free_argv.
-static char** embed_make_argv(const char* src, int* out_argc) {
-  char** argv = (char**)malloc(sizeof(char*) * 2);
-  argv[0] = strdup("factor");
-  size_t n = strlen(src);
-  char* eflag = (char*)malloc(n + 4);  // "-e=" + src + NUL
-  memcpy(eflag, "-e=", 3);
-  memcpy(eflag + 3, src, n + 1);
-  argv[1] = eflag;
-  *out_argc = 2;
-  return argv;
-}
-
-static void embed_free_argv(char** argv, int argc) {
-  for (int i = 0; i < argc; i++) free(argv[i]);
-  free(argv);
-}
-
 // Re-entrant embedding (Rung B). One persistent VM, reused across calls,
 // that does NOT take the process over: the embed image's startup quotation
 // is `[ boot embed-eval-once ]` (no `exit`), so c_to_factor RETURNS to the
@@ -158,7 +138,7 @@ static int embed_run_snippet(const char* image_path, const char* src) {
 // One-shot eval (Rung A): evaluate `src` and let Factor print whatever it
 // prints to stdout, then tear the VM down. `image_path` may be NULL to use
 // the default/embedded image. Returns 0 on success.
-extern "C" VM_C_API int factor_embed_eval_oneshot(const char* image_path,
+VM_C_API int factor_embed_eval_oneshot(const char* image_path,
                                                   const char* src) {
   return embed_run_snippet(image_path, src);
 }
@@ -185,7 +165,7 @@ extern "C" VM_C_API int factor_embed_eval_oneshot(const char* image_path,
 // treats that as an error). Keeping the value-marshalling in Factor source
 // (unparse) rather than across the C boundary is what lets a later
 // re-entrant API reuse the exact same wrapper.
-extern "C" VM_C_API int factor_embed_eval_to_file(const char* image_path,
+VM_C_API int factor_embed_eval_to_file(const char* image_path,
                                                   const char* src_path,
                                                   const char* result_path) {
   if (!src_path || !result_path) return 1;
@@ -218,7 +198,7 @@ extern "C" VM_C_API int factor_embed_eval_to_file(const char* image_path,
 //   src        : Factor source to evaluate (printed output is captured)
 //   returns    : a malloc'd C string with eval>string's output; caller
 //                frees via factor_embed_eval_free. NULL on failure.
-extern "C" VM_C_API char* factor_embed_eval(const char* image_path,
+VM_C_API char* factor_embed_eval(const char* image_path,
                                             const char* src) {
   if (!src) return NULL;
   if (embed_vm_init(image_path) != 0) return NULL;
@@ -226,7 +206,7 @@ extern "C" VM_C_API char* factor_embed_eval(const char* image_path,
   return g_embed_vm->factor_eval_string((char*)src);
 }
 
-extern "C" VM_C_API void factor_embed_eval_free(char* result) {
+VM_C_API void factor_embed_eval_free(char* result) {
   if (g_embed_vm && result) g_embed_vm->factor_eval_free(result);
 }
 
@@ -252,7 +232,7 @@ typedef void        (*factor_embed_map_put_fn)(const char* key,
 static factor_embed_map_get_fn g_embed_map_get = NULL;
 static factor_embed_map_put_fn g_embed_map_put = NULL;
 
-extern "C" VM_C_API void factor_embed_map_set_hooks(
+VM_C_API void factor_embed_map_set_hooks(
     factor_embed_map_get_fn get_fn, factor_embed_map_put_fn put_fn) {
   g_embed_map_get = get_fn;
   g_embed_map_put = put_fn;
@@ -262,14 +242,14 @@ extern "C" VM_C_API void factor_embed_map_set_hooks(
 // borrowed C string (host-owned) or NULL. Factor copies it into a Factor
 // string at the boundary (c-string return marshalling), so the borrow only
 // needs to outlive that copy.
-extern "C" VM_C_API const char* factor_embed_map_get(const char* key) {
+VM_C_API const char* factor_embed_map_get(const char* key) {
   if (!g_embed_map_get || !key) return NULL;
   return g_embed_map_get(key);
 }
 
 // Called FROM Factor to write a host key. Both strings are borrowed for the
 // duration of the call; the host copies what it needs.
-extern "C" VM_C_API void factor_embed_map_put(const char* key,
+VM_C_API void factor_embed_map_put(const char* key,
                                               const char* value) {
   if (!g_embed_map_put || !key || !value) return;
   g_embed_map_put(key, value);
